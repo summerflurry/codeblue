@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101411">
+<title>WORDLE — Six Letter Challenge</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+:root{--bg:#071321;--panel:#0d2035;--tile:#0d2035;--line:#254665;--text:#f1f7ff;--muted:#8faac7;--green:#79d7ff;--green2:#3eabdf;--yellow:#e8bd63;--gray:#344b64}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -15%,#174a78 0%,#0b223b 38%,var(--bg) 72%);color:var(--text);font-family:Manrope,system-ui,sans-serif;display:flex;justify-content:center}
+.app{width:min(100%,520px);padding:22px 18px 28px;display:flex;flex-direction:column;align-items:center}
+.top{width:100%;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1b3b5c;padding-bottom:17px}
+.iconbtn{width:38px;height:38px;border:1px solid #315574;background:#102941;color:#e5f3ff;border-radius:12px;font-size:17px;cursor:pointer}
+.brand{text-align:center}.brand h1{font-size:clamp(27px,7vw,38px);letter-spacing:.22em;margin:0 0 3px;font-weight:800;background:linear-gradient(120deg,#f2fbff,#8edcff 65%,#429ce6);color:transparent;background-clip:text}
+.brand p{margin:0;color:var(--muted);font-size:10px;letter-spacing:.24em;font-weight:700}
+.subline{display:flex;align-items:center;gap:12px;margin:16px 0 18px;color:#829086;font-size:10px;letter-spacing:.18em}.subline:before,.subline:after{content:"";height:1px;background:#303a32;width:50px}
+.board{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;width:min(100%,342px);margin:0 auto 23px}
+.tile{aspect-ratio:1;border:2px solid #254665;border-radius:9px;display:grid;place-items:center;font-family:'DM Mono',monospace;font-size:clamp(21px,6vw,28px);font-weight:500;text-transform:uppercase;background:rgba(13,32,53,.82);transition:transform .12s,border-color .12s}
+.tile.filled{border-color:#6b9bc2;animation:pop .08s ease-out}.tile.flip{animation:flip .45s ease}
+.tile.correct{background:#299b62;border-color:#299b62;color:#fff}.tile.present{background:#b48a35;border-color:#b48a35;color:#fff}.tile.absent{background:#344b64;border-color:#344b64;color:#fff}
+@keyframes pop{50%{transform:scale(1.06)}}@keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+.status{height:26px;margin:-9px 0 9px;font-size:12px;color:#c5ddf4;text-align:center}
+.keyboard{width:100%;display:flex;flex-direction:column;gap:8px}.keyrow{display:flex;justify-content:center;gap:5px}.key{height:49px;flex:1;max-width:43px;border:0;border-radius:8px;background:#214463;color:#f5faff;font:700 13px Manrope,sans-serif;cursor:pointer;box-shadow:inset 0 -2px #102b44;transition:filter .12s,transform .12s}.key:active{transform:translateY(1px);filter:brightness(1.2)}.key.wide{max-width:70px;flex:1.5;font-size:10px;letter-spacing:.04em}.key.correct{background:#299b62}.key.present{background:#b48a35}.key.absent{background:#14283a;color:#7895b2}
+.footer{margin-top:22px;display:flex;gap:8px;align-items:center;color:#819db9;font-size:10px;letter-spacing:.08em}.dot{width:5px;height:5px;background:var(--green2);border-radius:50%;box-shadow:0 0 9px #6fbd64}
+.overlay{position:fixed;inset:0;background:#0009;display:none;place-items:center;padding:20px;z-index:5}.overlay.show{display:grid}.modal{width:min(100%,360px);background:#102941;border:1px solid #315574;border-radius:18px;padding:24px;box-shadow:0 25px 80px #0008}.modal h2{margin:0 0 12px;font-size:19px}.modal p,.modal li{color:#b7c2b8;font-size:13px;line-height:1.65}.modal button{margin-top:8px;padding:10px 16px;background:var(--green);color:#082036;border:0;border-radius:9px;font-weight:800;cursor:pointer}
+@media(max-width:380px){.app{padding:16px 10px}.board{gap:5px;width:min(100%,320px)}.tile{border-radius:7px}.key{height:45px;gap:4px}.keyrow{gap:4px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <button class="iconbtn" id="help" aria-label="How to play">?</button>
+    <div class="brand"><h1>WORDLE</h1><p>SIX LETTERS · ENGLISH</p></div>
+    <button class="iconbtn" id="restart" aria-label="Restart game">↻</button>
+  </header>
+  <div class="subline">THE DAILY CHALLENGE</div>
+  <section class="board" id="board" aria-label="Guess grid"></section>
+  <div class="status" id="status" aria-live="polite"></div>
+  <section class="keyboard" id="keyboard" aria-label="On-screen keyboard"></section>
+  <div class="footer"><span class="dot"></span> SIX LETTERS · SIX CHANCES</div>
+</main>
+<div class="overlay" id="overlay" role="dialog" aria-modal="true">
+ <div class="modal"><h2 id="modalTitle">How to play</h2><div id="modalBody"></div><button id="closeModal">GOT IT</button></div>
+</div>
+<script>
+(() => {
+  // The secret is intentionally fixed. "radmin" is accepted as the winning answer,
+  // even though it is not a standard English dictionary word.
+  const ANSWER = "radmin";
+  const MAX_ROWS = 6, WORD_LENGTH = 6;
+  // A compact built-in list for common six-letter English guesses. The dictionary
+  // API below checks other words when online; this list works offline for these words.
+  const WORDS = new Set((
+    "animal answer anyone arrive artist asking babies backed barely basket battle beauty became become before behalf behind being belief belong better beyond bishop border bought branch breath bridge bright broken budget burden camera cancer cannot canvas career castle casual caught center chance change charge cheapen choose church circle client closed coffee column combat coming common comply copper corner costed county couple course cousin create credit crisis custom damage danger daring dealer debate decade decide defeat degree demand depend design desire detail dinner direct doctor dollar domain double driven driver during easily eating editor effect effort eighties either eleven emerge empire employ enable ending energy engage engine enough ensure entire entity escape estate ethics ethnic evolve excess excuse expand expect expert export extend fabric facing factor failed fairly family famous farmer father faulted fellow female figure filing finger finish fiscal fitted flight flower flying follow forest forget formal format former fossil fought fourth framed friend frozen future garage garden gather gender gentle global golden govern ground growth guilty habit happened hardly headed health hearing hearted heavy higher highly himself history holder honest honour horror hotelie hungry hunter ignore impact import impose income indeed indoor infant inform injury inside insist intend invest invite island itself jacket jungle junior keeper kernel killed kindly kingdom kitchen knight known labeler labour ladder landed largely lasting latest latter launch lawyer leader league learned leave it legacy legend leisure length lesson letter levelled liberal library license lifted likely limit line linear linked listen little living locate locked lonely longer looked losing lovely luxury mainly making manage manner manual margin marine marked market master matter mature maximum means measure medical medium meeting member memory mental merely merit method middle mightly million mineral minimal minute mirror mobile modern modest moment monkey monthly moral moral much more morning mostly mother motion motorist mountain moving murder museum music named narrow nation native nature nearby nearly needed needle nephew never newton nobody normal notice notion number object obtain occupy occur oceanic office officer offset online opened option orange origin output owning oxygen packet painter palace parent partly passed passion patent paying people period permit person phrase picked picnic picture pieces planet player please plenty pocket poetry police policy polite postal poster potato poverty prayer prefer pretty prince printed prison profit proper proven public pulled purely purple pursue puzzle quarter queenly quickly quiets rabbit racial racing raised random rarely rather reader reading really reason recall recent record reduce reform refuse region regret regular reject relate relief remain remote remove repair repeat replace report resort result return reveal review reward rhythm ribbon riding rightly rising ritual rivered rocket romantic rougher roundly routine ruling runner sacred safely safety salary sample saving saying school science screen script search season second secret seeing seemed seized select seller senior series served server settle sevenly severe shadow shallow shared shelter shifted shining signal signed silent silver simple simply singer single sister sitting skilled slowly smooth soccer social softly solely solved someone soonest source speech spirit spoken spring square stable stadium stated steady stolen stone stone store storm story street stress strict strike string strong studio submit sudden suffer summer sunday supper supply surely survey switch symbol system tablet taking talent target taught tenant tennis thanks theory thirty though thread throat thrown ticket timely tissue title toasts tomato tongue toward travel treaty tricky trusted trying tunnel turned twelve twenty unable unique united unless unlike unlock update useful valley valued varied vehicle velvet vendor versus victim victory viewer village vision visual volume voted waiting walker wanted warned wealth weapon weekly weight welcome whether window winner winter wisdom wishing within wonder worker worldy worried worthy writing yellow youths"
+  ).split(/\s+/).filter(w => w.length === 6 && /^[a-z]+$/.test(w)));
+  const board = document.getElementById('board'), keyboard = document.getElementById('keyboard');
+  const status = document.getElementById('status');
+  let row = 0, col = 0, guesses = Array.from({length:MAX_ROWS},()=>Array(WORD_LENGTH).fill(''));
+  let ended = false, checking = false, keyStates = {};
+  // Keep each revealed tile color in state so redraws never erase past results.
+  let tileResults = Array.from({length:MAX_ROWS},()=>Array(WORD_LENGTH).fill(''));
+  const keyRows = ["QWERTYUIOP","ASDFGHJKL"];
+  function drawBoard(){
+    board.innerHTML='';
+    guesses.forEach((guess,r)=>guess.forEach((letter,c)=>{
+      const tile=document.createElement('div'); tile.className='tile'; tile.textContent=letter;
+      tile.id=`tile-${r}-${c}`; if(letter)tile.classList.add('filled');
+      if(tileResults[r][c]) tile.classList.add(tileResults[r][c]);
+      board.appendChild(tile);
+    }));
+  }
+  function drawKeyboard(){
+    keyboard.innerHTML='';
+    keyRows.forEach((letters,i)=>{
+      const line=document.createElement('div');line.className='keyrow';
+      if(i===1){const spacer=document.createElement('span');spacer.style.flex='.35';line.appendChild(spacer);}
+      [...letters].forEach(letter=>line.appendChild(makeKey(letter)));
+      if(i===1){const spacer=document.createElement('span');spacer.style.flex='.35';line.appendChild(spacer);}
+      keyboard.appendChild(line);
+    });
+    const bottom=document.createElement('div');bottom.className='keyrow';
+    bottom.appendChild(makeKey('ENTER',true));
+    "ZXCVBNM".split('').forEach(letter=>bottom.appendChild(makeKey(letter)));
+    bottom.appendChild(makeKey('⌫',true));keyboard.appendChild(bottom);
+  }
+  function makeKey(label,wide=false){
+    const b=document.createElement('button');b.className='key'+(wide?' wide':'');b.textContent=label;
+    b.dataset.key=label;
+    if(keyStates[label])b.classList.add(keyStates[label]);
+    b.addEventListener('click',()=>press(label));return b;
+  }
+  function message(text){status.textContent=text;}
+  function press(key){
+    if(ended||checking)return;
+    if(key==='ENTER'){submitGuess();return;}
+    if(key==='⌫'||key==='BACKSPACE'){if(col>0){col--;guesses[row][col]='';drawBoard();}return;}
+    if(/^[A-Z]$/.test(key)&&col<WORD_LENGTH){guesses[row][col]=key.toLowerCase();col++;drawBoard();}
+  }
+  async function validEnglish(word){
+    if(word===ANSWER || WORDS.has(word))return true;
+    try{
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),2500);
+      const response=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,{signal:controller.signal});
+      clearTimeout(timer);return response.ok;
+    }catch(e){return false;}
+  }
+  async function submitGuess(){
+    if(col<WORD_LENGTH){message('Enter all 6 letters first.');return;}
+    const word=guesses[row].join('');
+    checking=true;message('Checking word…');
+    const valid=await validEnglish(word);
+    checking=false;
+    if(ended)return;
+    if(!valid){message('That word isn’t in the English dictionary.');return;}
+    message('');
+    const answerLetters=ANSWER.split(''), result=Array(WORD_LENGTH).fill('absent');
+    // Wordle-style duplicate-letter handling.
+    for(let i=0;i<WORD_LENGTH;i++)if(word[i]===answerLetters[i]){result[i]='correct';answerLetters[i]=null;}
+    for(let i=0;i<WORD_LENGTH;i++)if(result[i]!=='correct'){
+      const idx=answerLetters.indexOf(word[i]);if(idx!==-1){result[i]='present';answerLetters[idx]=null;}
+    }
+    for(let i=0;i<WORD_LENGTH;i++){
+      const tile=document.getElementById(`tile-${row}-${i}`);
+      // Save the result before animations; it will survive every board redraw.
+      tileResults[row][i] = result[i];
+      setTimeout(()=>{tile.classList.add('flip');setTimeout(()=>{tile.classList.remove('flip');tile.classList.add(result[i]);},220);},i*180);
+      const rank={absent:1,present:2,correct:3};
+      if(!keyStates[word[i]]||rank[result[i]]>rank[keyStates[word[i]]])keyStates[word[i]]=result[i];
+    }
+    setTimeout(()=>{
+      drawKeyboard();
+      if(word===ANSWER){ended=true;message('Brilliant! You cracked the code.');showModal('YOU GOT IT!',`<p>Perfect solve in ${row+1} ${row===0?'guess':'guesses'}.</p><p>The answer was <strong>RADMIN</strong>.</p>`);}
+      else if(row===MAX_ROWS-1){ended=true;message('No guesses left. Restart to try again.');showModal('TRY AGAIN',`<p>You used all six attempts. The answer stays secret.</p><p>Restart the game to begin a fresh challenge.</p>`);}
+      else{row++;col=0;message('');}
+    },WORD_LENGTH*180+320);
+  }
+  function showModal(title,body){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;document.getElementById('overlay').classList.add('show');}
+  document.getElementById('help').addEventListener('click',()=>showModal('HOW TO PLAY',`<p>Guess the hidden <strong>six-letter answer</strong> in six tries. Guesses must be English words.</p><ul><li><strong style="color:#79d7ff">Green</strong> — right letter, right place.</li><li><strong style="color:#e7c65c">Yellow</strong> — right letter, wrong place.</li><li><strong>Gray</strong> — that letter isn’t in the answer.</li></ul><p>Some words are checked online, so internet access helps validate less common guesses.</p>`));
+  document.getElementById('closeModal').addEventListener('click',()=>document.getElementById('overlay').classList.remove('show'));
+  document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')e.currentTarget.classList.remove('show');});
+  document.getElementById('restart').addEventListener('click',()=>{row=0;col=0;ended=false;checking=false;keyStates={};tileResults=Array.from({length:MAX_ROWS},()=>Array(WORD_LENGTH).fill(''));guesses=Array.from({length:MAX_ROWS},()=>Array(WORD_LENGTH).fill(''));message('');drawBoard();drawKeyboard();});
+  document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='Enter')press('ENTER');else if(e.key==='Backspace')press('BACKSPACE');else if(/^[a-zA-Z]$/.test(e.key))press(e.key.toUpperCase());});
+  drawBoard();drawKeyboard();
+})();
+</script>
+</body>
+</html>
